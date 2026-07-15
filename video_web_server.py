@@ -1166,6 +1166,28 @@ class VideoHandler(BaseHTTPRequestHandler):
 
 def run_server(port=8001):
     init_db()
+
+    # --- ИНИЦИАЛИЗАЦИЯ КЕША ДИРЕКТОРИЙ (чтобы папки отображались сразу) ---
+    global video_dirs_cache
+    with video_dirs_lock:
+        video_dirs_cache = set()
+        for root, dirs, files in os.walk(BASE_DIR):
+            # Пропускаем системные папки
+            dirs[:] = [d for d in dirs if d not in SKIP_DIR_NAMES and not d.startswith('.')]
+            for name in files:
+                ext = os.path.splitext(name)[1].lower()
+                if ext in VIDEO_EXTENSIONS:
+                    # Добавляем текущую папку и все родительские
+                    dir_path = root
+                    while dir_path != BASE_DIR and dir_path.startswith(BASE_DIR + os.sep):
+                        video_dirs_cache.add(dir_path)
+                        dir_path = os.path.dirname(dir_path)
+                    if dir_path == BASE_DIR:
+                        video_dirs_cache.add(BASE_DIR)
+                    break  # достаточно одного файла в папке
+        video_dirs_cache.add(BASE_DIR)
+    # ---------------------------------------------------------------------
+
     try:
         subprocess.run(
             ['ffprobe', '-version'],
@@ -1210,7 +1232,6 @@ def run_server(port=8001):
         stop_event.set()
         server.shutdown()
         scanner_thread.join(timeout=5)
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Локальный видеосервер с кешем метаданных')
