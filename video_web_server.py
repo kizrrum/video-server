@@ -60,6 +60,8 @@ scan_state = {
     'message': '',
 }
 scan_lock = threading.Lock()
+video_dirs_cache = set()
+video_dirs_lock = threading.Lock()
 transcode_semaphore = threading.BoundedSemaphore(MAX_TRANSCODE_JOBS)
 
 
@@ -249,6 +251,24 @@ def scan_directory(refresh=False):
         video_files = collect_video_files()
         total = len(video_files)
         known_paths = set(video_files)
+
+        # --- НОВОЕ: обновляем кеш директорий (добавляем все родительские папки) ---
+        global video_dirs_cache
+        with video_dirs_lock:
+            video_dirs_cache = set()
+            for fpath in video_files:
+                # Идём от родительской папки файла вверх до BASE_DIR
+                dir_path = os.path.dirname(fpath)
+                while dir_path != BASE_DIR and dir_path.startswith(BASE_DIR + os.sep):
+                    video_dirs_cache.add(dir_path)
+                    dir_path = os.path.dirname(dir_path)
+                # Добавляем сам BASE_DIR, если файл в нём или в подпапке
+                if dir_path == BASE_DIR:
+                    video_dirs_cache.add(BASE_DIR)
+            # Всегда показываем корневую папку (даже если в ней нет видео, но в подпапках есть)
+            video_dirs_cache.add(BASE_DIR)
+        # -------------------------------------------------------------------------
+
         with scan_lock:
             scan_state['total'] = total
         print(f'Найдено {total} файлов')
@@ -309,7 +329,6 @@ def scan_directory(refresh=False):
     finally:
         with scan_lock:
             scan_state['running'] = False
-
 
 def start_scan_async(refresh=False):
     def runner():
@@ -439,6 +458,11 @@ def list_directory(relative_path, sort_by='name', order='asc', search_query=''):
             except OSError:
                 mtime = 0
             if os.path.isdir(item_path):
+                # --- НОВОЕ: пропускаем папки без видео ---
+                with video_dirs_lock:
+                    if item_path not in video_dirs_cache:
+                        continue
+                # -----------------------------------------
                 items.append({
                     'type': 'dir',
                     'name': name,
@@ -697,7 +721,7 @@ class VideoHandler(BaseHTTPRequestHandler):
                 handle.seek(start)
                 remaining = length
                 while remaining > 0:
-                    chunk = handle.read(min(64 * 1024, remaining))
+                    chunk = handle.read(min(1024 * 1024, remaining))
                     if not chunk:
                         break
                     self.wfile.write(chunk)
@@ -737,7 +761,7 @@ class VideoHandler(BaseHTTPRequestHandler):
             self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             while True:
-                data = proc.stdout.read(8192)
+                data = proc.stdout.read(1024 * 1024)
                 if not data:
                     break
                 self.wfile.write(data)
@@ -1048,7 +1072,7 @@ class VideoHandler(BaseHTTPRequestHandler):
                 var saved = localStorage.getItem(storageKey);
                 if (saved && !isNaN(parseFloat(saved))) {{
                     var pos = parseFloat(saved);
-                    if (pos > 5 && pos < video.duration) {{
+                    if (pos > 0.5 && pos < video.duration) {{
                         video.currentTime = pos;
                     }}
                 }}
