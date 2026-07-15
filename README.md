@@ -35,21 +35,21 @@ cd video-server
 
 ```bash
 export BASE_DIR=/путь/к/видео
-python3 video_web_server_v2.py
+python3 video_web_server.py
 ```
 
 **Windows (CMD):**
 
 ```cmd
 set BASE_DIR=C:\путь\к\видео
-python video_web_server_v2.py
+python video_web_server.py
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
 $env:BASE_DIR = "C:\путь\к\видео"
-python video_web_server_v2.py
+python video_web_server.py
 ```
 
 После запуска откройте браузер и перейдите по адресу:
@@ -120,7 +120,7 @@ Environment="BASE_DIR=/путь/к/видео"
 Environment="AUTH_USER=admin"
 Environment="AUTH_PASS=your_password"
 Environment="PORT=8001"
-ExecStart=/usr/bin/python3 /путь/к/репозиторию/video_web_server_v2.py
+ExecStart=/usr/bin/python3 /путь/к/репозиторию/video_web_server.py
 Restart=always
 RestartSec=10
 
