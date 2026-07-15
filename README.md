@@ -65,13 +65,17 @@ http://localhost:8001
 | Переменная | Значение по умолчанию | Описание |
 |-----------|----------------------|----------|
 | `BASE_DIR` | `/media/320-sata/tor` | Корневая папка с видео |
+| `DB_PATH` | `/var/cache/video_server/metadata.db` | Путь к БД с кэшем |
 | `PORT` | `8001` | Порт сервера |
 | `AUTH_USER` | (пусто) | Логин для доступа |
 | `AUTH_PASS` | (пусто) | Пароль для доступа |
 | `URL_PREFIX` | (пусто) | Префикс URL (например, `/video`) |
 | `FFMPEG_PRESET` | `ultrafast` | Скорость кодирования |
 | `FFMPEG_CRF` | `28` | Качество (меньше = лучше) |
+| `FFMPEG_THREADS` | `1` | Потоков x264 |
+| `FFMPEG_NICE` | `10` | Приоритет процесса (Linux) |
 | `MAX_TRANSCODE_JOBS` | `1` | Одновременных транскодов |
+| `TRANSCODE_QUEUE_SEC` | `300` | Таймаут ожидания транскода |
 | `SCAN_WORKERS` | `2` | Потоков при сканировании |
 
 Полный список — в коде, в разделе `# КОНФИГУРАЦИЯ`.
@@ -80,13 +84,14 @@ http://localhost:8001
 
 ## 🧩 Возможности
 
-- 📁 **Навигация** по папкам с сортировкой и поиском
+- 📁 **Навигация** по папкам с сортировкой и поиском (включая подпапки)
 - 🎞 **Воспроизведение** в браузере через HTML5-видео
 - ⚡ **Перекодирование** на лету (AVI, AC3, DTS → MP4/H.264/AAC)
 - 📁 **M3U-плейлисты** для VLC и других плееров
 - 🔐 **Аутентификация** (опционально)
 - 🧵 **Многопоточное сканирование** с прогрессом
 - 📊 **Статус сканирования** через API `/status`
+- 🗂️ **Фильтрация пустых папок** — показываются только папки с видео
 - 💻 **Кроссплатформенность** — работает на Windows, Linux, macOS
 
 ---
@@ -117,9 +122,13 @@ After=network.target
 [Service]
 WorkingDirectory=/путь/к/репозиторию
 Environment="BASE_DIR=/путь/к/видео"
+Environment="DB_PATH=/var/cache/video_server/metadata.db"
 Environment="AUTH_USER=admin"
 Environment="AUTH_PASS=your_password"
 Environment="PORT=8001"
+Environment="FFMPEG_PRESET=ultrafast"
+Environment="FFMPEG_CRF=28"
+Environment="MAX_TRANSCODE_JOBS=1"
 ExecStart=/usr/bin/python3 /путь/к/репозиторию/video_web_server.py
 Restart=always
 RestartSec=10
