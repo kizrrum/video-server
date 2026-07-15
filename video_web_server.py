@@ -154,6 +154,23 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
+        # ===== НОВОЕ: Таблица для полнотекстового поиска =====
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS file_index (
+                path TEXT PRIMARY KEY,
+                filename TEXT,
+                basename TEXT,
+                parent_dir TEXT
+            )
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_filename ON file_index(filename)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_basename ON file_index(basename)
+        ''')
+        # ======================================================
+
 
 def get_video_metadata(filepath):
     try:
@@ -199,6 +216,17 @@ def collect_video_files():
     return video_files
 
 
+def update_file_index(conn, filepath):
+    """Обновляет индекс файлов для быстрого поиска."""
+    filename = os.path.basename(filepath)
+    basename = os.path.splitext(filename)[0].lower()
+    parent_dir = os.path.dirname(filepath)
+    conn.execute('''
+        INSERT OR REPLACE INTO file_index (path, filename, basename, parent_dir)
+        VALUES (?, ?, ?, ?)
+    ''', (filepath, filename, basename, parent_dir))
+
+
 def _scan_one(fpath, refresh, now):
     try:
         mtime = os.path.getmtime(fpath)
@@ -216,6 +244,10 @@ def _scan_one(fpath, refresh, now):
     title, audio_tracks, audio_codecs, video_codec = get_video_metadata(fpath)
     if not title:
         title = title_from_filename(fpath)
+    # ===== НОВОЕ: Обновляем индекс =====
+    with get_db_conn() as conn:
+        update_file_index(conn, fpath)
+    # ==================================
     return (
         fpath,
         os.path.basename(fpath),
@@ -508,7 +540,7 @@ def list_directory(relative_path, sort_by='name', order='asc', search_query=''):
 
 
 def search_recursive(relative_path, search_query, sort_by='name', order='asc'):
-    """Рекурсивно ищет видеофайлы по имени во всех подпапках."""
+    """Рекурсивно ищет видеофайлы по имени во всех подпапках (fallback)."""
     full = get_full_path(relative_path)
     if not os.path.isdir(full):
         return None
@@ -561,6 +593,62 @@ def search_recursive(relative_path, search_query, sort_by='name', order='asc'):
         results.sort(key=lambda x: x.get('size', 0), reverse=reverse)
 
     return results
+
+
+def search_by_index(search_query, sort_by='name', order='asc'):
+    """Быстрый поиск по индексу (через SQL)."""
+    search = search_query.strip().lower()
+    if not search:
+        return []
+    
+    # Ищем по началу имени (быстрее, чем LIKE %%)
+    with get_db_conn() as conn:
+        # Используем GLOB для регистронезависимого поиска с подстановкой
+        rows = conn.execute('''
+            SELECT path, filename, basename, parent_dir
+            FROM file_index
+            WHERE filename GLOB ? OR basename GLOB ?
+            ORDER BY filename
+        ''', (f'*{search}*', f'*{search}*')).fetchall()
+    
+    results = []
+    for row in rows:
+        path, filename, basename, parent_dir = row
+        rel = os.path.relpath(path, BASE_DIR) if path != BASE_DIR else ''
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            mtime = 0
+        title, tracks, audio_codecs, video_codec = ensure_cache_video(path)
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = 0
+        results.append({
+            'type': 'file',
+            'name': filename,
+            'full_path': rel,
+            'title': title,
+            'audio_icon': '✅' if tracks > 0 else '❌',
+            'audio_tracks': tracks,
+            'audio_codecs': audio_codecs,
+            'video_codec': video_codec or '',
+            'needs_transcode': need_audio_transcoding(audio_codecs) or need_video_transcoding(video_codec),
+            'mtime': mtime,
+            'size': size,
+        })
+    
+    # Сортировка
+    reverse = order == 'desc'
+    if sort_by == 'name':
+        results.sort(key=lambda x: x['name'].lower(), reverse=reverse)
+    elif sort_by == 'mtime':
+        results.sort(key=lambda x: x.get('mtime', 0), reverse=reverse)
+    elif sort_by == 'size':
+        results.sort(key=lambda x: x.get('size', 0), reverse=reverse)
+    
+    return results
+
 
 # ---------- HTTP ОБРАБОТЧИК ----------
 class VideoHandler(BaseHTTPRequestHandler):
@@ -663,7 +751,10 @@ class VideoHandler(BaseHTTPRequestHandler):
             order = 'asc'
 
         if search_query:
-            items = search_recursive(dir_param, search_query, sort_by, order)
+            items = search_by_index(search_query, sort_by, order)
+            # Если индекс пуст (первое сканирование) или ничего не нашёл — используем рекурсивный поиск как fallback
+            if not items:
+                items = search_recursive(dir_param, search_query, sort_by, order)
         else:
             items = list_directory(dir_param, sort_by, order, '')
         if items is None:
