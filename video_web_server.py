@@ -507,6 +507,61 @@ def list_directory(relative_path, sort_by='name', order='asc', search_query=''):
     return items
 
 
+def search_recursive(relative_path, search_query, sort_by='name', order='asc'):
+    """Рекурсивно ищет видеофайлы по имени во всех подпапках."""
+    full = get_full_path(relative_path)
+    if not os.path.isdir(full):
+        return None
+
+    results = []
+    search = search_query.strip().lower()
+    for root, dirs, files in os.walk(full):
+        # Пропускаем системные папки
+        dirs[:] = [d for d in dirs if d not in SKIP_DIR_NAMES and not d.startswith('.')]
+        for name in files:
+            if name.startswith('.'):
+                continue
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in VIDEO_EXTENSIONS:
+                continue
+            if search and search not in name.lower():
+                continue
+            item_path = os.path.join(root, name)
+            rel = os.path.relpath(item_path, BASE_DIR) if item_path != BASE_DIR else ''
+            try:
+                mtime = os.path.getmtime(item_path)
+            except OSError:
+                mtime = 0
+            title, tracks, audio_codecs, video_codec = ensure_cache_video(item_path)
+            try:
+                size = os.path.getsize(item_path)
+            except OSError:
+                size = 0
+            results.append({
+                'type': 'file',
+                'name': name,
+                'full_path': rel,
+                'title': title,
+                'audio_icon': '✅' if tracks > 0 else '❌',
+                'audio_tracks': tracks,
+                'audio_codecs': audio_codecs,
+                'video_codec': video_codec or '',
+                'needs_transcode': need_audio_transcoding(audio_codecs) or need_video_transcoding(video_codec),
+                'mtime': mtime,
+                'size': size,
+            })
+
+    # Сортировка
+    reverse = order == 'desc'
+    if sort_by == 'name':
+        results.sort(key=lambda x: x['name'].lower(), reverse=reverse)
+    elif sort_by == 'mtime':
+        results.sort(key=lambda x: x.get('mtime', 0), reverse=reverse)
+    elif sort_by == 'size':
+        results.sort(key=lambda x: x.get('size', 0), reverse=reverse)
+
+    return results
+
 # ---------- HTTP ОБРАБОТЧИК ----------
 class VideoHandler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
@@ -607,7 +662,10 @@ class VideoHandler(BaseHTTPRequestHandler):
         if order not in ('asc', 'desc'):
             order = 'asc'
 
-        items = list_directory(dir_param, sort_by, order, search_query)
+        if search_query:
+            items = search_recursive(dir_param, search_query, sort_by, order)
+        else:
+            items = list_directory(dir_param, sort_by, order, '')
         if items is None:
             self.send_error(404, 'Directory not found')
             return
