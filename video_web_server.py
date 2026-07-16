@@ -1024,11 +1024,11 @@ class VideoHandler(BaseHTTPRequestHandler):
                     transcode_mark = ' ⚠️' if item.get('needs_transcode') else ''
                     rows.append(f'''
                     <tr>
-                        <td><a href="{watch_url}" target="_blank">{self.escape_html(item["name"])}</a> <a href="{download_url}" download style="font-size:0.8rem;">📥</a></td>
+                        <td><a href="{watch_url}" target="_blank">{self.escape_html(item["name"])}</a> <a href="{download_url}" download style="font-size:0.8rem; margin-left: 6px;">📥</a> <a href="{m3u_url}" download style="font-size:0.8rem; margin-left: 4px;">📋</a></td>
                         <td style="text-align:center">{item["audio_icon"]}</td>
-                        <td>{self.escape_html(codec_hint)}{transcode_mark}</td>
+                        <td>{self.escape_html(codec_hint)}<span title="Требуется транскодирование">{transcode_mark}</span></td>
                         <td>{format_size(item.get("size", 0))}<br><span style="color:#888;font-size:0.85rem;">{mtime_str}</span></td>
-                        <td><a href="{m3u_url}" download style="font-size:0.8rem;">📁 M3U</a></td>
+                        <td></td>
                     </tr>
                     ''')
 
@@ -1082,6 +1082,8 @@ class VideoHandler(BaseHTTPRequestHandler):
             .scan-status {{ margin-bottom: 1rem; background: #1e2a1e; padding: 8px 12px; border-radius: 8px; }}
             .scan-status.running {{ background: #2a241e; color: #ffcc80; }}
             footer {{ margin-top: 2rem; text-align: center; color: #555; font-size: 0.8rem; }}
+            /* Скрываем пустую колонку (бывшая M3U) */
+            th:last-child, td:last-child {{ display: none; }}
 
             /* ===== АДАПТИВНЫЙ ДИЗАЙН ===== */
             @media (max-width: 768px) {{
@@ -1094,7 +1096,6 @@ class VideoHandler(BaseHTTPRequestHandler):
                 .search {{ flex-direction: column; }}
                 .search input {{ width: 100%; box-sizing: border-box; min-width: auto; }}
                 .toolbar a, .toolbar button {{ font-size: 0.8rem; padding: 6px 12px; text-align: center; }}
-                th:last-child, td:last-child {{ display: none; }}
             }}
 
             @media (max-width: 480px) {{
@@ -1127,7 +1128,7 @@ class VideoHandler(BaseHTTPRequestHandler):
                     <th>🔊</th>
                     <th>🎬 Кодек</th>
                     <th>{sort_link('size', 'Размер / Дата')}</th>
-                    <th>M3U</th>
+                    <!--<th>M3U</th>-->
                 </tr>
             </thead>
             <tbody>{''.join(rows)}</tbody>
@@ -1255,9 +1256,9 @@ class VideoHandler(BaseHTTPRequestHandler):
             <br>
             {nav_buttons}
             <br>
-            <a href="{download_link}" download class="download">📥 Скачать оригинал</a>
-            <a href="{m3u_link}" download class="download">📁 M3U плейлист</a>
-            <a href="{back_link}" class="back">← Назад к списку</a>
+            <a href="{download_link}" download class="download" title="Скачать оригинальный файл">📥 Скачать оригинал</a>
+            <a href="{m3u_link}" download class="download" title="Скачать M3U плейлист для VLC">📁 M3U плейлист</a>
+            <a href="{back_link}" class="back" title="Вернуться к списку файлов">← Назад к списку</a>
         </div>
         <script>
             (function() {{
