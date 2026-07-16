@@ -987,265 +987,311 @@ class VideoHandler(BaseHTTPRequestHandler):
         return crumbs
 
     def render_browser(self, items, current_dir, breadcrumbs, sort_by='name', order='asc', search_query=''):
-        rows = []
-        if current_dir:
-            parent = os.path.dirname(current_dir)
-            parent_url = (
-                make_url(f'/?dir={urllib.parse.quote(parent)}&sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}')
-                if parent else
-                make_url(f'/?sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}')
-            )
-            rows.append(f'''
-            <tr style="background-color:#2a2a2a;">
-                <td colspan="5"><a href="{parent_url}">📁 .. (Наверх)</a></td>
-            </tr>
-            ''')
-
-        for item in items:
-            mtime_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(item['mtime'])) if item['mtime'] else ''
-            if item['type'] == 'dir':
-                dir_url = make_url(
-                    f'/?dir={urllib.parse.quote(item["full_path"])}&sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}'
+            rows = []
+            if current_dir:
+                parent = os.path.dirname(current_dir)
+                parent_url = (
+                    make_url(f'/?dir={urllib.parse.quote(parent)}&sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}')
+                    if parent else
+                    make_url(f'/?sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}')
                 )
                 rows.append(f'''
-                <tr>
-                    <td><a href="{dir_url}">📁 {self.escape_html(item["name"])}</a></td>
-                    <td></td>
-                    <td></td>
-                    <td>{mtime_str}</td>
-                    <td></td>
-                </tr>
-                ''')
-            else:
-                watch_url = make_url(f'/watch?path={urllib.parse.quote(item["full_path"])}')
-                download_url = make_url(f'/stream?path={urllib.parse.quote(item["full_path"])}')
-                m3u_url = make_url(f'/playlist.m3u?path={urllib.parse.quote(item["full_path"])}')
-                codec_hint = item['video_codec'].upper() if item['video_codec'] else ''
-                transcode_mark = ' ⚠️' if item.get('needs_transcode') else ''
-                rows.append(f'''
-                <tr>
-                    <td><a href="{watch_url}" target="_blank">{self.escape_html(item["name"])}</a> <a href="{download_url}" download style="font-size:0.8rem;">📥</a></td>
-                    <td style="text-align:center">{item["audio_icon"]}</td>
-                    <td>{self.escape_html(codec_hint)}{transcode_mark}</td>
-                    <td>{format_size(item.get("size", 0))}<br><span style="color:#888;font-size:0.85rem;">{mtime_str}</span></td>
-                    <td><a href="{m3u_url}" download style="font-size:0.8rem;">📁 M3U</a></td>
+                <tr style="background-color:#2a2a2a;">
+                    <td colspan="5"><a href="{parent_url}">📁 .. (Наверх)</a></td>
                 </tr>
                 ''')
 
-        bread_html = ' / '.join(
-            f'<a href="{c["url"]}">{self.escape_html(c["name"])}</a>' for c in breadcrumbs
-        )
+            for item in items:
+                mtime_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(item['mtime'])) if item['mtime'] else ''
+                if item['type'] == 'dir':
+                    dir_url = make_url(
+                        f'/?dir={urllib.parse.quote(item["full_path"])}&sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}'
+                    )
+                    rows.append(f'''
+                    <tr>
+                        <td><a href="{dir_url}">📁 {self.escape_html(item["name"])}</a></td>
+                        <td></td>
+                        <td></td>
+                        <td>{mtime_str}</td>
+                        <td></td>
+                    </tr>
+                    ''')
+                else:
+                    watch_url = make_url(f'/watch?path={urllib.parse.quote(item["full_path"])}')
+                    download_url = make_url(f'/stream?path={urllib.parse.quote(item["full_path"])}')
+                    m3u_url = make_url(f'/playlist.m3u?path={urllib.parse.quote(item["full_path"])}')
+                    codec_hint = item['video_codec'].upper() if item['video_codec'] else ''
+                    transcode_mark = ' ⚠️' if item.get('needs_transcode') else ''
+                    rows.append(f'''
+                    <tr>
+                        <td><a href="{watch_url}" target="_blank">{self.escape_html(item["name"])}</a> <a href="{download_url}" download style="font-size:0.8rem;">📥</a></td>
+                        <td style="text-align:center">{item["audio_icon"]}</td>
+                        <td>{self.escape_html(codec_hint)}{transcode_mark}</td>
+                        <td>{format_size(item.get("size", 0))}<br><span style="color:#888;font-size:0.85rem;">{mtime_str}</span></td>
+                        <td><a href="{m3u_url}" download style="font-size:0.8rem;">📁 M3U</a></td>
+                    </tr>
+                    ''')
 
-        def sort_link(field, label):
-            new_order = 'desc' if (sort_by == field and order == 'asc') else 'asc'
-            arrow = ' ▲' if (sort_by == field and order == 'asc') else ' ▼' if (sort_by == field and order == 'desc') else ''
-            url = make_url(
-                f'/?dir={urllib.parse.quote(current_dir)}&sort={field}&order={new_order}&q={urllib.parse.quote(search_query)}'
+            bread_html = ' / '.join(
+                f'<a href="{c["url"]}">{self.escape_html(c["name"])}</a>' for c in breadcrumbs
             )
-            return f'<a href="{url}">{label}{arrow}</a>'
 
-        search_action = make_url(f'/?dir={urllib.parse.quote(current_dir)}&sort={sort_by}&order={order}')
+            def sort_link(field, label):
+                new_order = 'desc' if (sort_by == field and order == 'asc') else 'asc'
+                arrow = ' ▲' if (sort_by == field and order == 'asc') else ' ▼' if (sort_by == field and order == 'desc') else ''
+                url = make_url(
+                    f'/?dir={urllib.parse.quote(current_dir)}&sort={field}&order={new_order}&q={urllib.parse.quote(search_query)}'
+                )
+                return f'<a href="{url}">{label}{arrow}</a>'
 
-        with scan_lock:
-            scan_msg = scan_state.get('message') or ''
-            scanning = scan_state.get('running', False)
-            scan_progress = f'{scan_state.get("done", 0)}/{scan_state.get("total", 0)}'
+            search_action = make_url(f'/?dir={urllib.parse.quote(current_dir)}&sort={sort_by}&order={order}')
 
-        scan_banner = ''
-        if scanning:
-            scan_banner = f'<div class="scan-status running">⟳ Сканирование: {scan_progress}</div>'
-        elif scan_msg:
-            scan_banner = f'<div class="scan-status">{self.escape_html(scan_msg)}</div>'
+            with scan_lock:
+                scan_msg = scan_state.get('message') or ''
+                scanning = scan_state.get('running', False)
+                scan_progress = f'{scan_state.get("done", 0)}/{scan_state.get("total", 0)}'
 
-        return f'''<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="color-scheme" content="dark">
-    <title>Видеотека — файловый менеджер</title>
-    <style>
-        body {{ background-color: #121212; color: #e0e0e0; font-family: system-ui; margin: 2rem; }}
-        h1 {{ color: #ffffff; border-left: 4px solid #bb86fc; padding-left: 1rem; }}
-        .breadcrumbs {{ margin: 1rem 0; font-size: 1.1rem; background: #1e1e1e; padding: 0.5rem; border-radius: 8px; }}
-        table {{ border-collapse: collapse; width: 100%; background-color: #1e1e1e; border-radius: 8px; overflow: hidden; }}
-        th, td {{ border: 1px solid #333; padding: 10px 12px; text-align: left; vertical-align: top; }}
-        th {{ background-color: #2c2c2c; color: #bb86fc; }}
-        tr:nth-child(even) {{ background-color: #252525; }}
-        tr:hover {{ background-color: #2a2a2a; }}
-        a {{ color: #8ab4f8; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-        .toolbar {{ margin-bottom: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }}
-        .toolbar a, .toolbar button {{ background-color: #2c2c2c; padding: 6px 12px; border-radius: 20px; font-size:0.9rem; border: none; color: #8ab4f8; cursor: pointer; }}
-        .search {{ display: flex; gap: 0.5rem; }}
-        .search input {{ background: #1e1e1e; border: 1px solid #444; color: #e0e0e0; border-radius: 20px; padding: 6px 12px; min-width: 220px; }}
-        .scan-status {{ margin-bottom: 1rem; background: #1e2a1e; padding: 8px 12px; border-radius: 8px; }}
-        .scan-status.running {{ background: #2a241e; color: #ffcc80; }}
-        footer {{ margin-top: 2rem; text-align: center; color: #555; font-size: 0.8rem; }}
-    </style>
-</head>
-<body>
-    <h1>📂 Видеотека — навигация по папкам</h1>
-    <div class="breadcrumbs">📍 {bread_html}</div>
-    {scan_banner}
-    <div class="toolbar">
-        <a href="{make_url('/?refresh_cache=1&dir=' + urllib.parse.quote(current_dir))}">⟳ Обновить кеш</a>
-        <form class="search" method="get" action="{search_action}">
-            <input type="hidden" name="dir" value="{self.escape_html(current_dir)}">
-            <input type="hidden" name="sort" value="{sort_by}">
-            <input type="hidden" name="order" value="{order}">
-            <input type="search" name="q" value="{self.escape_html(search_query)}" placeholder="Поиск по имени...">
-            <button type="submit">Найти</button>
-        </form>
-    </div>
-    <table>
-        <thead>
-            <tr>
-                <th>{sort_link('name', 'Имя')}</th>
-                <th>🔊</th>
-                <th>🎬 Кодек</th>
-                <th>{sort_link('size', 'Размер / Дата')}</th>
-                <th>M3U</th>
-            </tr>
-        </thead>
-        <tbody>{''.join(rows)}</tbody>
-    </table>
-    <footer>Клик по названию → просмотр | 📥 → скачать | 📁 M3U → плейлист для VLC</footer>
-    <script>
-        (function() {{
-            var scanning = {'true' if scanning else 'false'};
-            if (scanning) {{
-                setInterval(function() {{
-                    fetch('{make_url("/status")}')
-                        .then(function(r) {{ return r.json(); }})
-                        .then(function(data) {{
-                            var el = document.querySelector('.scan-status');
-                            if (!el) return;
-                            if (data.running) {{
-                                el.textContent = '⟳ Сканирование: ' + data.done + '/' + data.total;
-                                el.className = 'scan-status running';
-                            }} else {{
-                                el.textContent = data.message || 'Готово';
-                                el.className = 'scan-status';
-                                if (!data.running) scanning = false;
-                            }}
-                        }})
-                        .catch(function() {{}});
-                }}, 3000);
+            scan_banner = ''
+            if scanning:
+                scan_banner = f'<div class="scan-status running">⟳ Сканирование: {scan_progress}</div>'
+            elif scan_msg:
+                scan_banner = f'<div class="scan-status">{self.escape_html(scan_msg)}</div>'
+
+            return f'''<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="color-scheme" content="dark">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Видеотека — файловый менеджер</title>
+        <style>
+            body {{ background-color: #121212; color: #e0e0e0; font-family: system-ui; margin: 2rem; }}
+            h1 {{ color: #ffffff; border-left: 4px solid #bb86fc; padding-left: 1rem; }}
+            .breadcrumbs {{ margin: 1rem 0; font-size: 1.1rem; background: #1e1e1e; padding: 0.5rem; border-radius: 8px; }}
+            table {{ border-collapse: collapse; width: 100%; background-color: #1e1e1e; border-radius: 8px; overflow: hidden; }}
+            th, td {{ border: 1px solid #333; padding: 10px 12px; text-align: left; vertical-align: top; }}
+            th {{ background-color: #2c2c2c; color: #bb86fc; }}
+            tr:nth-child(even) {{ background-color: #252525; }}
+            tr:hover {{ background-color: #2a2a2a; }}
+            a {{ color: #8ab4f8; text-decoration: none; }}
+            a:hover {{ text-decoration: underline; }}
+            .toolbar {{ margin-bottom: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }}
+            .toolbar a, .toolbar button {{ background-color: #2c2c2c; padding: 6px 12px; border-radius: 20px; font-size:0.9rem; border: none; color: #8ab4f8; cursor: pointer; }}
+            .search {{ display: flex; gap: 0.5rem; }}
+            .search input {{ background: #1e1e1e; border: 1px solid #444; color: #e0e0e0; border-radius: 20px; padding: 6px 12px; min-width: 220px; }}
+            .scan-status {{ margin-bottom: 1rem; background: #1e2a1e; padding: 8px 12px; border-radius: 8px; }}
+            .scan-status.running {{ background: #2a241e; color: #ffcc80; }}
+            footer {{ margin-top: 2rem; text-align: center; color: #555; font-size: 0.8rem; }}
+
+            /* ===== АДАПТИВНЫЙ ДИЗАЙН ===== */
+            @media (max-width: 768px) {{
+                body {{ margin: 0.5rem; }}
+                h1 {{ font-size: 1.3rem; padding-left: 0.5rem; }}
+                .breadcrumbs {{ font-size: 0.85rem; padding: 0.4rem; overflow-x: auto; white-space: nowrap; }}
+                table {{ display: block; overflow-x: auto; white-space: nowrap; }}
+                th, td {{ padding: 6px 8px; font-size: 0.8rem; }}
+                .toolbar {{ flex-direction: column; align-items: stretch; gap: 0.5rem; }}
+                .search {{ flex-direction: column; }}
+                .search input {{ width: 100%; box-sizing: border-box; min-width: auto; }}
+                .toolbar a, .toolbar button {{ font-size: 0.8rem; padding: 6px 12px; text-align: center; }}
+                th:last-child, td:last-child {{ display: none; }}
             }}
-        }})();
-    </script>
-</body>
-</html>'''
+
+            @media (max-width: 480px) {{
+                body {{ margin: 0.3rem; }}
+                th, td {{ font-size: 0.7rem; padding: 4px 5px; }}
+                h1 {{ font-size: 1.1rem; }}
+                .scan-status {{ font-size: 0.75rem; }}
+                .breadcrumbs {{ font-size: 0.75rem; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>📂 Видеотека — навигация по папкам</h1>
+        <div class="breadcrumbs">📍 {bread_html}</div>
+        {scan_banner}
+        <div class="toolbar">
+            <a href="{make_url('/?refresh_cache=1&dir=' + urllib.parse.quote(current_dir))}">⟳ Обновить кеш</a>
+            <form class="search" method="get" action="{search_action}">
+                <input type="hidden" name="dir" value="{self.escape_html(current_dir)}">
+                <input type="hidden" name="sort" value="{sort_by}">
+                <input type="hidden" name="order" value="{order}">
+                <input type="search" name="q" value="{self.escape_html(search_query)}" placeholder="Поиск по имени...">
+                <button type="submit">Найти</button>
+            </form>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>{sort_link('name', 'Имя')}</th>
+                    <th>🔊</th>
+                    <th>🎬 Кодек</th>
+                    <th>{sort_link('size', 'Размер / Дата')}</th>
+                    <th>M3U</th>
+                </tr>
+            </thead>
+            <tbody>{''.join(rows)}</tbody>
+        </table>
+        <footer>Клик по названию → просмотр | 📥 → скачать | 📁 M3U → плейлист для VLC</footer>
+        <script>
+            (function() {{
+                var scanning = {'true' if scanning else 'false'};
+                if (scanning) {{
+                    setInterval(function() {{
+                        fetch('{make_url("/status")}')
+                            .then(function(r) {{ return r.json(); }})
+                            .then(function(data) {{
+                                var el = document.querySelector('.scan-status');
+                                if (!el) return;
+                                if (data.running) {{
+                                    el.textContent = '⟳ Сканирование: ' + data.done + '/' + data.total;
+                                    el.className = 'scan-status running';
+                                }} else {{
+                                    el.textContent = data.message || 'Готово';
+                                    el.className = 'scan-status';
+                                    if (!data.running) scanning = false;
+                                }}
+                            }})
+                            .catch(function() {{}});
+                    }}, 3000);
+                }}
+            }})();
+        </script>
+    </body>
+    </html>'''
 
     def render_watch_page(
-        self, relative_path, title, audio_tracks, audio_codecs, video_codec, warning,
-        prev_path=None, next_path=None, current_index=None, total_files=None,
-        parent_rel='', stream_mime='video/mp4',
-    ):
-        encoded_path = urllib.parse.quote(relative_path)
-        stream_url = make_url(f'/stream?path={encoded_path}')
-        download_link = make_url(f'/stream?path={encoded_path}')
-        m3u_link = make_url(f'/playlist.m3u?path={encoded_path}')
-        back_link = make_url(f'/?dir={urllib.parse.quote(parent_rel)}') if parent_rel else make_url('/')
+            self, relative_path, title, audio_tracks, audio_codecs, video_codec, warning,
+            prev_path=None, next_path=None, current_index=None, total_files=None,
+            parent_rel='', stream_mime='video/mp4',
+        ):
+            encoded_path = urllib.parse.quote(relative_path)
+            stream_url = make_url(f'/stream?path={encoded_path}')
+            download_link = make_url(f'/stream?path={encoded_path}')
+            m3u_link = make_url(f'/playlist.m3u?path={encoded_path}')
+            back_link = make_url(f'/?dir={urllib.parse.quote(parent_rel)}') if parent_rel else make_url('/')
 
-        audio_info = f'🔊 Аудиодорожек: {audio_tracks}'
-        if audio_codecs:
-            audio_info += f', кодеки: {audio_codecs}'
-        if video_codec:
-            audio_info += f' | 🎬 Видео: {video_codec.upper()}'
+            audio_info = f'🔊 Аудиодорожек: {audio_tracks}'
+            if audio_codecs:
+                audio_info += f', кодеки: {audio_codecs}'
+            if video_codec:
+                audio_info += f' | 🎬 Видео: {video_codec.upper()}'
 
-        storage_key = 'video_pos_' + base64.urlsafe_b64encode(relative_path.encode('utf-8')).decode('ascii')
+            storage_key = 'video_pos_' + base64.urlsafe_b64encode(relative_path.encode('utf-8')).decode('ascii')
 
-        nav_buttons = ''
-        if current_index is not None and total_files:
-            nav_buttons += f'<div style="margin-top:1rem; font-size:0.9rem;">Серия {current_index + 1} из {total_files}</div>'
-        nav_buttons += '<div style="margin: 1rem 0;">'
-        if prev_path:
-            prev_url = make_url(f'/watch?path={urllib.parse.quote(prev_path)}')
-            nav_buttons += f'<a href="{prev_url}" class="nav-btn" id="prevBtn">⬅ Предыдущий</a> '
-        else:
-            nav_buttons += '<span class="nav-btn disabled">⬅ Предыдущий</span> '
-        nav_buttons += '<button id="playPauseBtn" class="nav-btn" onclick="togglePlayPause()">⏯ Пауза / Воспроизведение</button>'
-        if next_path:
-            next_url = make_url(f'/watch?path={urllib.parse.quote(next_path)}')
-            nav_buttons += f' <a href="{next_url}" class="nav-btn" id="nextBtn">Следующий ➡</a>'
-        else:
-            nav_buttons += ' <span class="nav-btn disabled">Следующий ➡</span>'
-        nav_buttons += '</div>'
+            nav_buttons = ''
+            if current_index is not None and total_files:
+                nav_buttons += f'<div style="margin-top:1rem; font-size:0.9rem;">Серия {current_index + 1} из {total_files}</div>'
+            nav_buttons += '<div style="margin: 1rem 0;">'
+            if prev_path:
+                prev_url = make_url(f'/watch?path={urllib.parse.quote(prev_path)}')
+                nav_buttons += f'<a href="{prev_url}" class="nav-btn" id="prevBtn">⬅ Предыдущий</a> '
+            else:
+                nav_buttons += '<span class="nav-btn disabled">⬅ Предыдущий</span> '
+            nav_buttons += '<button id="playPauseBtn" class="nav-btn" onclick="togglePlayPause()">⏯ Пауза / Воспроизведение</button>'
+            if next_path:
+                next_url = make_url(f'/watch?path={urllib.parse.quote(next_path)}')
+                nav_buttons += f' <a href="{next_url}" class="nav-btn" id="nextBtn">Следующий ➡</a>'
+            else:
+                nav_buttons += ' <span class="nav-btn disabled">Следующий ➡</span>'
+            nav_buttons += '</div>'
 
-        return f'''<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="color-scheme" content="dark">
-    <title>{self.escape_html(title)} — просмотр</title>
-    <style>
-        body {{ background-color: #121212; color: #e0e0e0; font-family: system-ui; margin: 2rem; text-align: center; }}
-        .container {{ max-width: 90%; margin: auto; }}
-        video {{ max-width: 100%; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }}
-        .info {{ margin-top: 1rem; background: #1e1e1e; display: inline-block; padding: 0.5rem 1rem; border-radius: 30px; }}
-        .warning {{ color: #ffaa66; margin-top: 1rem; background: #2a1e1e; padding: 10px; border-radius: 12px; }}
-        a {{ color: #8ab4f8; text-decoration: none; }}
-        .back, .download {{ margin-top: 2rem; display: inline-block; background: #2c2c2c; padding: 6px 12px; border-radius: 20px; margin-right: 10px; }}
-        .nav-btn {{
-            display: inline-block; background: #2c2c2c; color: #8ab4f8; padding: 8px 16px;
-            border-radius: 20px; text-decoration: none; font-size: 1rem; margin: 0 5px; border: none; cursor: pointer;
-        }}
-        .nav-btn.disabled {{ color: #555; pointer-events: none; background: #1a1a1a; }}
-        .nav-btn:hover:not(.disabled) {{ background: #3a3a3a; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>🎥 Сейчас воспроизводится:</h2>
-        <h1>{self.escape_html(title)}</h1>
-        <div class="info">{self.escape_html(audio_info)}</div>
-        {f'<div class="warning">{self.escape_html(warning)}</div>' if warning else ''}
-        <br><br>
-        <video id="videoPlayer" controls autoplay>
-            <source src="{stream_url}" type="{self.escape_html(stream_mime)}">
-            Ваш браузер не поддерживает видео.
-        </video>
-        <br>
-        {nav_buttons}
-        <br>
-        <a href="{download_link}" download class="download">📥 Скачать оригинал</a>
-        <a href="{m3u_link}" download class="download">📁 M3U плейлист</a>
-        <a href="{back_link}" class="back">← Назад к списку</a>
-    </div>
-    <script>
-        (function() {{
-            var video = document.getElementById('videoPlayer');
-            var storageKey = '{storage_key}';
-            video.addEventListener('loadedmetadata', function() {{
-                var saved = localStorage.getItem(storageKey);
-                if (saved && !isNaN(parseFloat(saved))) {{
-                    var pos = parseFloat(saved);
-                    if (pos > 0.5 && pos < video.duration) {{
-                        video.currentTime = pos;
+            return f'''<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="color-scheme" content="dark">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{self.escape_html(title)} — просмотр</title>
+        <style>
+            body {{ background-color: #121212; color: #e0e0e0; font-family: system-ui; margin: 2rem; text-align: center; }}
+            .container {{ max-width: 90%; margin: auto; }}
+            video {{ max-width: 100%; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }}
+            .info {{ margin-top: 1rem; background: #1e1e1e; display: inline-block; padding: 0.5rem 1rem; border-radius: 30px; }}
+            .warning {{ color: #ffaa66; margin-top: 1rem; background: #2a1e1e; padding: 10px; border-radius: 12px; }}
+            a {{ color: #8ab4f8; text-decoration: none; }}
+            .back, .download {{ margin-top: 2rem; display: inline-block; background: #2c2c2c; padding: 6px 12px; border-radius: 20px; margin-right: 10px; }}
+            .nav-btn {{
+                display: inline-block; background: #2c2c2c; color: #8ab4f8; padding: 8px 16px;
+                border-radius: 20px; text-decoration: none; font-size: 1rem; margin: 0 5px; border: none; cursor: pointer;
+            }}
+            .nav-btn.disabled {{ color: #555; pointer-events: none; background: #1a1a1a; }}
+            .nav-btn:hover:not(.disabled) {{ background: #3a3a3a; }}
+
+            /* ===== АДАПТИВНЫЙ ДИЗАЙН ===== */
+            @media (max-width: 768px) {{
+                body {{ margin: 0.5rem; }}
+                h1 {{ font-size: 1.2rem; }}
+                h2 {{ font-size: 1rem; }}
+                .info {{ font-size: 0.8rem; padding: 0.3rem 0.8rem; }}
+                .warning {{ font-size: 0.8rem; padding: 6px; }}
+                .nav-btn {{ font-size: 0.85rem; padding: 8px 14px; margin: 3px; }}
+                .back, .download {{ font-size: 0.8rem; padding: 6px 12px; margin: 3px; }}
+                .container {{ max-width: 100%; padding: 0 5px; }}
+            }}
+
+            @media (max-width: 480px) {{
+                body {{ margin: 0.3rem; }}
+                h1 {{ font-size: 1rem; }}
+                h2 {{ font-size: 0.9rem; }}
+                .nav-btn {{ font-size: 0.75rem; padding: 6px 10px; margin: 2px; }}
+                .back, .download {{ font-size: 0.7rem; padding: 4px 8px; }}
+                .info {{ font-size: 0.7rem; }}
+                .warning {{ font-size: 0.7rem; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>🎥 Сейчас воспроизводится:</h2>
+            <h1>{self.escape_html(title)}</h1>
+            <div class="info">{self.escape_html(audio_info)}</div>
+            {f'<div class="warning">{self.escape_html(warning)}</div>' if warning else ''}
+            <br><br>
+            <video id="videoPlayer" controls autoplay>
+                <source src="{stream_url}" type="{self.escape_html(stream_mime)}">
+                Ваш браузер не поддерживает видео.
+            </video>
+            <br>
+            {nav_buttons}
+            <br>
+            <a href="{download_link}" download class="download">📥 Скачать оригинал</a>
+            <a href="{m3u_link}" download class="download">📁 M3U плейлист</a>
+            <a href="{back_link}" class="back">← Назад к списку</a>
+        </div>
+        <script>
+            (function() {{
+                var video = document.getElementById('videoPlayer');
+                var storageKey = '{storage_key}';
+                video.addEventListener('loadedmetadata', function() {{
+                    var saved = localStorage.getItem(storageKey);
+                    if (saved && !isNaN(parseFloat(saved))) {{
+                        var pos = parseFloat(saved);
+                        if (pos > 0.5 && pos < video.duration) {{
+                            video.currentTime = pos;
+                        }}
+                    }}
+                }});
+                function savePos() {{
+                    if (video && video.currentTime) {{
+                        localStorage.setItem(storageKey, video.currentTime);
                     }}
                 }}
-            }});
-            function savePos() {{
-                if (video && video.currentTime) {{
-                    localStorage.setItem(storageKey, video.currentTime);
-                }}
-            }}
-            video.addEventListener('pause', savePos);
-            window.addEventListener('beforeunload', savePos);
-            window.togglePlayPause = function() {{
-                if (video.paused) video.play(); else video.pause();
-            }};
-            document.addEventListener('keydown', function(e) {{
-                if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-                if (e.code === 'Space') {{ e.preventDefault(); togglePlayPause(); }}
-                if (e.code === 'ArrowLeft' && document.getElementById('prevBtn')) document.getElementById('prevBtn').click();
-                if (e.code === 'ArrowRight' && document.getElementById('nextBtn')) document.getElementById('nextBtn').click();
-            }});
-        }})();
-    </script>
-</body>
-</html>'''
+                video.addEventListener('pause', savePos);
+                window.addEventListener('beforeunload', savePos);
+                window.togglePlayPause = function() {{
+                    if (video.paused) video.play(); else video.pause();
+                }};
+                document.addEventListener('keydown', function(e) {{
+                    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+                    if (e.code === 'Space') {{ e.preventDefault(); togglePlayPause(); }}
+                    if (e.code === 'ArrowLeft' && document.getElementById('prevBtn')) document.getElementById('prevBtn').click();
+                    if (e.code === 'ArrowRight' && document.getElementById('nextBtn')) document.getElementById('nextBtn').click();
+                }});
+            }})();
+        </script>
+    </body>
+    </html>'''
 
     @staticmethod
     def escape_html(text):
