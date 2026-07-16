@@ -241,13 +241,13 @@ def _scan_one(fpath, refresh, now):
                 conn.execute('UPDATE video_cache SET last_seen=? WHERE path=?', (now, fpath))
                 conn.commit()
                 return None, 'cached'
-    title, audio_tracks, audio_codecs, video_codec = get_video_metadata(fpath)
-    if not title:
-        title = title_from_filename(fpath)
-    # ===== НОВОЕ: Обновляем индекс =====
+    
+    # ИГНОРИРУЕМ МЕТАДАННЫЕ ДЛЯ НАЗВАНИЯ - берём ИЗ ИМЕНИ ФАЙЛА
+    _, audio_tracks, audio_codecs, video_codec = get_video_metadata(fpath)
+    title = title_from_filename(fpath)
+    
     with get_db_conn() as conn:
         update_file_index(conn, fpath)
-    # ==================================
     return (
         fpath,
         os.path.basename(fpath),
@@ -460,19 +460,32 @@ def get_full_path(relative_path):
 
 def resolve_video_path(relative_path):
     """Проверяет путь и возвращает абсолютный путь к файлу или None."""
-    if not is_safe_path(relative_path):
+    if not relative_path:
         return None
-    real_base = os.path.realpath(BASE_DIR)
+    
+    # Декодируем URL-encoded символы
+    try:
+        relative_path = urllib.parse.unquote(relative_path)
+    except:
+        pass
+    
+    # Проверяем безопасность пути
+    if '..' in relative_path or relative_path.startswith('/'):
+        return None
+    
     candidate = os.path.join(BASE_DIR, relative_path)
-    real_file = os.path.realpath(candidate)
-    if not real_file.startswith(real_base + os.sep) and real_file != real_base:
+    
+    # Проверяем, что файл существует
+    if not os.path.isfile(candidate):
+        print(f'[DEBUG] Файл не найден: {candidate}')
         return None
-    if not os.path.isfile(real_file):
-        return None
-    ext = os.path.splitext(real_file)[1].lower()
+    
+    # Проверяем расширение
+    ext = os.path.splitext(candidate)[1].lower()
     if ext not in VIDEO_EXTENSIONS:
         return None
-    return real_file
+    
+    return candidate
 
 
 def list_directory(relative_path, sort_by='name', order='asc', search_query=''):
@@ -512,6 +525,15 @@ def list_directory(relative_path, sort_by='name', order='asc', search_query=''):
                     size = os.path.getsize(item_path)
                 except OSError:
                     size = 0
+                # Формируем информацию о кодеках
+                codec_info = ''
+                if video_codec:
+                    codec_info += video_codec.upper()
+                if audio_codecs:
+                    if codec_info:
+                        codec_info += ' / '
+                    codec_info += audio_codecs.upper()
+                
                 items.append({
                     'type': 'file',
                     'name': name,
@@ -521,6 +543,7 @@ def list_directory(relative_path, sort_by='name', order='asc', search_query=''):
                     'audio_tracks': tracks,
                     'audio_codecs': audio_codecs,
                     'video_codec': video_codec or '',
+                    'codec_info': codec_info,
                     'needs_transcode': need_audio_transcoding(audio_codecs) or need_video_transcoding(video_codec),
                     'mtime': mtime,
                     'size': size,
@@ -569,6 +592,15 @@ def search_recursive(relative_path, search_query, sort_by='name', order='asc'):
                 size = os.path.getsize(item_path)
             except OSError:
                 size = 0
+            # Формируем информацию о кодеках
+            codec_info = ''
+            if video_codec:
+                codec_info += video_codec.upper()
+            if audio_codecs:
+                if codec_info:
+                    codec_info += ' / '
+                codec_info += audio_codecs.upper()
+            
             results.append({
                 'type': 'file',
                 'name': name,
@@ -578,11 +610,11 @@ def search_recursive(relative_path, search_query, sort_by='name', order='asc'):
                 'audio_tracks': tracks,
                 'audio_codecs': audio_codecs,
                 'video_codec': video_codec or '',
+                'codec_info': codec_info,
                 'needs_transcode': need_audio_transcoding(audio_codecs) or need_video_transcoding(video_codec),
                 'mtime': mtime,
                 'size': size,
             })
-
     # Сортировка
     reverse = order == 'desc'
     if sort_by == 'name':
@@ -624,6 +656,15 @@ def search_by_index(search_query, sort_by='name', order='asc'):
             size = os.path.getsize(path)
         except OSError:
             size = 0
+        # Формируем информацию о кодеках
+        codec_info = ''
+        if video_codec:
+            codec_info += video_codec.upper()
+        if audio_codecs:
+            if codec_info:
+                codec_info += ' / '
+            codec_info += audio_codecs.upper()
+        
         results.append({
             'type': 'file',
             'name': filename,
@@ -633,6 +674,7 @@ def search_by_index(search_query, sort_by='name', order='asc'):
             'audio_tracks': tracks,
             'audio_codecs': audio_codecs,
             'video_codec': video_codec or '',
+            'codec_info': codec_info,
             'needs_transcode': need_audio_transcoding(audio_codecs) or need_video_transcoding(video_codec),
             'mtime': mtime,
             'size': size,
@@ -930,31 +972,65 @@ class VideoHandler(BaseHTTPRequestHandler):
             self.send_error(400, 'Missing path')
             return
 
-        relative = paths[0]
-        real_file = resolve_video_path(relative)
-        if not real_file:
-            self.send_error(404, 'File not found')
+        # Декодируем путь
+        raw_path = paths[0]
+        try:
+            path_decoded = urllib.parse.unquote(raw_path, encoding='utf-8')
+        except:
+            path_decoded = urllib.parse.unquote(raw_path, encoding='latin-1')
+        
+        path_decoded = path_decoded.replace('//', '/').lstrip('/')
+        
+        if '..' in path_decoded or path_decoded.startswith('/'):
+            self.send_error(403, 'Access denied')
+            return
+        
+        full_path = os.path.join(BASE_DIR, path_decoded)
+        full_path = os.path.normpath(full_path)
+        
+        if not full_path.startswith(os.path.normpath(BASE_DIR)):
+            self.send_error(403, 'Access denied')
+            return
+        
+        if not os.path.isfile(full_path):
+            self.send_error(404, f'File not found: {path_decoded}')
             return
 
         host = self.headers.get('Host', 'localhost:8001')
         scheme = 'https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http'
-        stream_path = f'/stream?path={urllib.parse.quote(relative)}'
+        
+        path_for_stream = urllib.parse.quote(path_decoded, safe='', encoding='utf-8')
+        stream_path = f'/stream?path={path_for_stream}'
+        
         if URL_PREFIX:
             stream_path = URL_PREFIX + stream_path
+        
         full_stream_url = f'{scheme}://{host}{stream_path}'
+        
         if REQUIRE_AUTH:
-            full_stream_url = f'{scheme}://{urllib.parse.quote(AUTH_USER)}:{urllib.parse.quote(AUTH_PASS)}@{host}{stream_path}'
+            auth_part = f'{urllib.parse.quote(AUTH_USER)}:{urllib.parse.quote(AUTH_PASS)}'
+            full_stream_url = f'{scheme}://{auth_part}@{host}{stream_path}'
 
-        filename = os.path.basename(real_file)
-        m3u_content = f'#EXTM3U\n#EXTINF:0,{filename}\n{full_stream_url}\n'
+        filename = os.path.basename(full_path)
+        filename_display = os.path.splitext(filename)[0]
+        
+        # Убираем русские буквы из имени файла для заголовка
+        filename_ascii = filename_display.encode('ascii', errors='ignore').decode('ascii')
+        if not filename_ascii:
+            filename_ascii = 'playlist'
+        
+        m3u_content = f'#EXTM3U\n#EXTINF:0,{filename_display}\n{full_stream_url}\n'
         body = m3u_content.encode('utf-8')
+        
         self.send_response(200)
-        self.send_header('Content-Type', 'audio/x-mpegurl')
-        self.send_header('Content-Disposition', f'attachment; filename="{filename}.m3u"')
+        self.send_header('Content-Type', 'audio/x-mpegurl; charset=utf-8')
+        self.send_header('Content-Disposition', f'attachment; filename="{filename_ascii}.m3u"')
         self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-cache')
         self.end_headers()
         self.wfile.write(body)
-
+        
+    
     def do_HEAD(self):
         if not self.require_auth_or_send():
             return
@@ -1020,11 +1096,11 @@ class VideoHandler(BaseHTTPRequestHandler):
                     watch_url = make_url(f'/watch?path={urllib.parse.quote(item["full_path"])}')
                     download_url = make_url(f'/stream?path={urllib.parse.quote(item["full_path"])}')
                     m3u_url = make_url(f'/playlist.m3u?path={urllib.parse.quote(item["full_path"])}')
-                    codec_hint = item['video_codec'].upper() if item['video_codec'] else ''
+                    codec_hint = item.get('codec_info', '')
                     transcode_mark = ' ⚠️' if item.get('needs_transcode') else ''
                     rows.append(f'''
                     <tr>
-                        <td><a href="{watch_url}" target="_blank">{self.escape_html(item["name"])}</a> <a href="{download_url}" download style="font-size:0.8rem; margin-left: 6px;">📥</a> <a href="{m3u_url}" download style="font-size:0.8rem; margin-left: 4px;">📋</a></td>
+                        <td><a href="{watch_url}" target="_blank" title="Смотреть видео">{self.escape_html(item["name"])}</a> <a href="{download_url}" download style="font-size:0.8rem; margin-left: 6px;" title="Скачать оригинал">📥</a> <a href="{m3u_url}" download style="font-size:0.8rem; margin-left: 4px;" title="Скачать M3U плейлист">📋</a></td>
                         <td style="text-align:center">{item["audio_icon"]}</td>
                         <td>{self.escape_html(codec_hint)}<span title="Требуется транскодирование">{transcode_mark}</span></td>
                         <td>{format_size(item.get("size", 0))}<br><span style="color:#888;font-size:0.85rem;">{mtime_str}</span></td>
