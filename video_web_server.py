@@ -552,13 +552,24 @@ def list_directory(relative_path, sort_by='name', order='asc', search_query=''):
         return None
 
     reverse = order == 'desc'
+    
+    # ===== ИСПРАВЛЕНИЕ: сортируем папки и файлы вместе =====
     if sort_by == 'name':
         items.sort(key=lambda x: x['name'].lower(), reverse=reverse)
     elif sort_by == 'mtime':
         items.sort(key=lambda x: x.get('mtime', 0), reverse=reverse)
     elif sort_by == 'size':
         items.sort(key=lambda x: x.get('size', 0), reverse=reverse)
-    items.sort(key=lambda x: 0 if x['type'] == 'dir' else 1)
+    
+    # ===== ИСПРАВЛЕНИЕ: стабильная сортировка — папки всегда сверху, но внутри сохраняется порядок =====
+    # Сначала собираем все папки и файлы в отдельные списки
+    dirs = [item for item in items if item['type'] == 'dir']
+    files = [item for item in items if item['type'] == 'file']
+    
+    # Папки уже отсортированы по выбранному полю, файлы тоже
+    # Просто объединяем: сначала папки, потом файлы
+    items = dirs + files
+    
     return items
 
 
@@ -1063,77 +1074,83 @@ class VideoHandler(BaseHTTPRequestHandler):
         return crumbs
 
     def render_browser(self, items, current_dir, breadcrumbs, sort_by='name', order='asc', search_query=''):
-            rows = []
-            if current_dir:
-                parent = os.path.dirname(current_dir)
-                parent_url = (
-                    make_url(f'/?dir={urllib.parse.quote(parent)}&sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}')
-                    if parent else
-                    make_url(f'/?sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}')
+        rows = []
+        if current_dir:
+            parent = os.path.dirname(current_dir)
+            parent_url = (
+                make_url(f'/?dir={urllib.parse.quote(parent)}&sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}')
+                if parent else
+                make_url(f'/?sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}')
+            )
+            rows.append(f'''
+            <tr style="background-color:#2a2a2a;">
+                <td colspan="4"><a href="{parent_url}">📁 .. (Наверх)</a></td>
+            </tr>
+            ''')
+
+        for item in items:
+            mtime_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(item['mtime'])) if item['mtime'] else ''
+            if item['type'] == 'dir':
+                dir_url = make_url(
+                    f'/?dir={urllib.parse.quote(item["full_path"])}&sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}'
                 )
                 rows.append(f'''
-                <tr style="background-color:#2a2a2a;">
-                    <td colspan="5"><a href="{parent_url}">📁 .. (Наверх)</a></td>
+                <tr>
+                    <td><a href="{dir_url}">📁 {self.escape_html(item["name"])}</a></td>
+                    <td></td>
+                    <td></td>
+                    <td>{mtime_str}</td>
+                </tr>
+                ''')
+            else:
+                watch_url = make_url(f'/watch?path={urllib.parse.quote(item["full_path"])}')
+                download_url = make_url(f'/stream?path={urllib.parse.quote(item["full_path"])}')
+                m3u_url = make_url(f'/playlist.m3u?path={urllib.parse.quote(item["full_path"])}')
+                codec_hint = item.get('codec_info', '')
+                transcode_mark = ' ⚠️' if item.get('needs_transcode') else ''
+                rows.append(f'''
+                <tr>
+                    <td><a href="{watch_url}" target="_blank" title="Смотреть видео">{self.escape_html(item["name"])}</a> <a href="{download_url}" download style="font-size:0.8rem; margin-left: 6px;" title="Скачать оригинал">📥</a> <a href="{m3u_url}" download style="font-size:0.8rem; margin-left: 4px;" title="Скачать M3U плейлист">📋</a></td>
+                    <td style="text-align:center">{item["audio_icon"]}</td>
+                    <td>{self.escape_html(codec_hint)}<span title="Требуется транскодирование">{transcode_mark}</span></td>
+                    <td>{format_size(item.get("size", 0))}<br><span style="color:#888;font-size:0.85rem;">{mtime_str}</span></td>
                 </tr>
                 ''')
 
-            for item in items:
-                mtime_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(item['mtime'])) if item['mtime'] else ''
-                if item['type'] == 'dir':
-                    dir_url = make_url(
-                        f'/?dir={urllib.parse.quote(item["full_path"])}&sort={sort_by}&order={order}&q={urllib.parse.quote(search_query)}'
-                    )
-                    rows.append(f'''
-                    <tr>
-                        <td><a href="{dir_url}">📁 {self.escape_html(item["name"])}</a></td>
-                        <td></td>
-                        <td></td>
-                        <td>{mtime_str}</td>
-                        <td></td>
-                    </tr>
-                    ''')
-                else:
-                    watch_url = make_url(f'/watch?path={urllib.parse.quote(item["full_path"])}')
-                    download_url = make_url(f'/stream?path={urllib.parse.quote(item["full_path"])}')
-                    m3u_url = make_url(f'/playlist.m3u?path={urllib.parse.quote(item["full_path"])}')
-                    codec_hint = item.get('codec_info', '')
-                    transcode_mark = ' ⚠️' if item.get('needs_transcode') else ''
-                    rows.append(f'''
-                    <tr>
-                        <td><a href="{watch_url}" target="_blank" title="Смотреть видео">{self.escape_html(item["name"])}</a> <a href="{download_url}" download style="font-size:0.8rem; margin-left: 6px;" title="Скачать оригинал">📥</a> <a href="{m3u_url}" download style="font-size:0.8rem; margin-left: 4px;" title="Скачать M3U плейлист">📋</a></td>
-                        <td style="text-align:center">{item["audio_icon"]}</td>
-                        <td>{self.escape_html(codec_hint)}<span title="Требуется транскодирование">{transcode_mark}</span></td>
-                        <td>{format_size(item.get("size", 0))}<br><span style="color:#888;font-size:0.85rem;">{mtime_str}</span></td>
-                        <td></td>
-                    </tr>
-                    ''')
+        bread_html = ' / '.join(
+            f'<a href="{c["url"]}">{self.escape_html(c["name"])}</a>' for c in breadcrumbs
+        )
 
-            bread_html = ' / '.join(
-                f'<a href="{c["url"]}">{self.escape_html(c["name"])}</a>' for c in breadcrumbs
-            )
+        def sort_link(field, label):
+            if sort_by == field:
+                new_order = 'desc' if order == 'asc' else 'asc'
+                arrow = ' ↑' if order == 'asc' else ' ↓'
+            else:
+                new_order = 'asc'
+                arrow = ''
+            
+            dir_param = urllib.parse.quote(current_dir) if current_dir else ''
+            q_param = urllib.parse.quote(search_query) if search_query else ''
+            
+            url = f'/?dir={dir_param}&sort={field}&order={new_order}&q={q_param}'
+            url = make_url(url)
+            
+            return f'<a href="{url}" style="color:#bb86fc; text-decoration:none; font-weight:bold;">{label}{arrow}</a>'
 
-            def sort_link(field, label):
-                new_order = 'desc' if (sort_by == field and order == 'asc') else 'asc'
-                arrow = ' ▲' if (sort_by == field and order == 'asc') else ' ▼' if (sort_by == field and order == 'desc') else ''
-                url = make_url(
-                    f'/?dir={urllib.parse.quote(current_dir)}&sort={field}&order={new_order}&q={urllib.parse.quote(search_query)}'
-                )
-                return f'<a href="{url}">{label}{arrow}</a>'
+        search_action = make_url(f'/?dir={urllib.parse.quote(current_dir)}&sort={sort_by}&order={order}')
 
-            search_action = make_url(f'/?dir={urllib.parse.quote(current_dir)}&sort={sort_by}&order={order}')
+        with scan_lock:
+            scan_msg = scan_state.get('message') or ''
+            scanning = scan_state.get('running', False)
+            scan_progress = f'{scan_state.get("done", 0)}/{scan_state.get("total", 0)}'
 
-            with scan_lock:
-                scan_msg = scan_state.get('message') or ''
-                scanning = scan_state.get('running', False)
-                scan_progress = f'{scan_state.get("done", 0)}/{scan_state.get("total", 0)}'
+        scan_banner = ''
+        if scanning:
+            scan_banner = f'<div class="scan-status running">⟳ Сканирование: {scan_progress}</div>'
+        elif scan_msg:
+            scan_banner = f'<div class="scan-status">{self.escape_html(scan_msg)}</div>'
 
-            scan_banner = ''
-            if scanning:
-                scan_banner = f'<div class="scan-status running">⟳ Сканирование: {scan_progress}</div>'
-            elif scan_msg:
-                scan_banner = f'<div class="scan-status">{self.escape_html(scan_msg)}</div>'
-
-            return f'''<!DOCTYPE html>
+        return f'''<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
@@ -1147,6 +1164,8 @@ class VideoHandler(BaseHTTPRequestHandler):
             table {{ border-collapse: collapse; width: 100%; background-color: #1e1e1e; border-radius: 8px; overflow: hidden; }}
             th, td {{ border: 1px solid #333; padding: 10px 12px; text-align: left; vertical-align: top; }}
             th {{ background-color: #2c2c2c; color: #bb86fc; }}
+            th a {{ color: #bb86fc !important; text-decoration: none; }}
+            th a:hover {{ text-decoration: underline; }}
             tr:nth-child(even) {{ background-color: #252525; }}
             tr:hover {{ background-color: #2a2a2a; }}
             a {{ color: #8ab4f8; text-decoration: none; }}
@@ -1158,10 +1177,7 @@ class VideoHandler(BaseHTTPRequestHandler):
             .scan-status {{ margin-bottom: 1rem; background: #1e2a1e; padding: 8px 12px; border-radius: 8px; }}
             .scan-status.running {{ background: #2a241e; color: #ffcc80; }}
             footer {{ margin-top: 2rem; text-align: center; color: #555; font-size: 0.8rem; }}
-            /* Скрываем пустую колонку (бывшая M3U) */
-            th:last-child, td:last-child {{ display: none; }}
 
-            /* ===== АДАПТИВНЫЙ ДИЗАЙН ===== */
             @media (max-width: 768px) {{
                 body {{ margin: 0.5rem; }}
                 h1 {{ font-size: 1.3rem; padding-left: 0.5rem; }}
@@ -1202,9 +1218,8 @@ class VideoHandler(BaseHTTPRequestHandler):
                 <tr>
                     <th>{sort_link('name', 'Имя')}</th>
                     <th>🔊</th>
-                    <th>🎬 Кодек</th>
-                    <th>{sort_link('size', 'Размер / Дата')}</th>
-                    <!--<th>M3U</th>-->
+                    <th>{sort_link('codec', '🎬 Кодек')}</th>
+                    <th>{sort_link('mtime', '📅 Размер / Дата')}</th>
                 </tr>
             </thead>
             <tbody>{''.join(rows)}</tbody>
